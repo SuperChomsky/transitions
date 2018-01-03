@@ -6,7 +6,7 @@ except ImportError:
 import warnings
 import sys
 
-from transitions.extensions.json import JSONMachine as Machine
+from transitions.extensions.exchange import ExchangeMachine as Machine
 
 from unittest import TestCase, skipIf
 
@@ -16,7 +16,7 @@ except ImportError:
     from mock import MagicMock
 
 
-class TestJSONTransitions(TestCase):
+class TestExchangeTransitions(TestCase):
 
     def test_states(self):
         def condition_func():

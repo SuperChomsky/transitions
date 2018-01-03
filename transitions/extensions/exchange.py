@@ -1,18 +1,18 @@
-import json
-from six import string_types
+from six import string_types, iteritems
 from functools import partial
 import itertools
 
 from ..core import Machine
 
 
-class JSONMachine(Machine):
+class ExchangeMachine(Machine):
 
     def __init__(self, *args, **kwargs):
         self._json = {}
         self.with_auto_transitions = True
         self.with_reference_names = True
-        super(JSONMachine, self).__init__(*args, **kwargs)
+        self.with_models = False
+        super(ExchangeMachine, self).__init__(*args, **kwargs)
 
     def json(self):
         self._json['states'] = [state for state in self.states]
