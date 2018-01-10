@@ -1,23 +1,74 @@
 from six import string_types, iteritems
 from functools import partial
 import itertools
+import importlib
+
+import pickle
 
 from ..core import Machine
 
 
 class ExchangeMachine(Machine):
 
+    _MODE_STATES = "states"
+    _MODE_DEFS = "classes"
+    _MODE_PKL = "full"
+
     def __init__(self, *args, **kwargs):
-        self._json = {}
+        self._markup = kwargs.pop('markup', {})
         self.with_auto_transitions = True
         self.with_reference_names = True
-        self.with_models = False
-        super(ExchangeMachine, self).__init__(*args, **kwargs)
+        self.model_mode = self._MODE_STATES
+        if self._markup:
+            models_markup = self._markup.pop('model', [])
+            super(ExchangeMachine, self).__init__(None, **self._markup)
+            for m in models_markup:
+                self._add_markup_model(m)
+        else:
+            super(ExchangeMachine, self).__init__(*args, **kwargs)
 
-    def json(self):
-        self._json['states'] = [state for state in self.states]
-        self._json['transitions'] = self._convert_transitions()
-        return self._json
+    def markup(self, model_model=None):
+        self._markup['states'] = [state for state in self.states]
+        self._markup['transitions'] = self._convert_transitions()
+        self._markup['initial'] = self.initial
+        self._markup['before_state_change'] = [rep(f) for f in self.before_state_change]
+        self._markup['after_state_change'] = [rep(f) for f in self.before_state_change]
+        self._markup['prepare_event'] = [rep(f) for f in self.prepare_event]
+        self._markup['finalize_event'] = [rep(f) for f in self.finalize_event]
+        self._markup['name'] = self.name
+        self._markup['send_event'] = self.send_event
+        self._markup['auto_transitions'] = self.auto_transitions
+        self._markup['ignore_invalid_triggers'] = self.ignore_invalid_triggers
+        self._markup['queued'] = self.has_queue
+
+        model_model = self.model_mode if model_model is None else model_model
+        self._markup['model'] = self._convert_models(model_model)
+        return self._markup
+
+    def _add_markup_model(self, markup):
+        initial = markup.get('state', None)
+        if 'model' in markup:
+            if markup['model'] == 'self':
+                self.add_model(self, initial)
+            else:
+                self.add_model(pickle.loads(markup['model']), initial)
+        else:
+            mod_name, cls_name = markup['class'][6:].rsplit('.', 1)
+            cls = getattr(importlib.import_module(mod_name), cls_name)
+            self.add_model(cls(), initial)
+
+    def _convert_models(self, mode):
+        models = []
+        for m in self.models:
+            model_def = dict(state=m.state)
+            if m == self:
+                model_def['model'] = 'self'
+            elif mode == self._MODE_DEFS:
+                model_def['class'] = self.__module__ + "." + self.__class__.__name__
+            elif mode == self._MODE_PKL:
+                model_def['model'] = pickle.dumps(m)
+            models.append(model_def)
+        return models
 
     def _convert_transitions(self):
         json_transitions = []
@@ -28,7 +79,7 @@ class ExchangeMachine(Machine):
             for transitions in event.transitions.items():
                 src = transitions[0]
                 for trans in transitions[1]:
-                    new_json = {"trigger": event.name, "src": src, "dest": trans.dest,
+                    new_json = {"trigger": event.name, "source": src, "dest": trans.dest,
                                 "prepare": [rep(f) for f in trans.prepare],
                                 "conditions": [rep(f.func) for f in trans.conditions if f.target],
                                 "unless": [rep(f.func) for f in trans.conditions if not f.target],
