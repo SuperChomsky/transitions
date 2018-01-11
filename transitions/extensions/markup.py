@@ -8,26 +8,21 @@ import pickle
 from ..core import Machine
 
 
-class ExchangeMachine(Machine):
-
-    _MODE_STATES = "states"
-    _MODE_DEFS = "classes"
-    _MODE_PKL = "full"
+class MarkupMachine(Machine):
 
     def __init__(self, *args, **kwargs):
         self._markup = kwargs.pop('markup', {})
         self.with_auto_transitions = True
         self.with_reference_names = True
-        self.model_mode = self._MODE_STATES
         if self._markup:
             models_markup = self._markup.pop('model', [])
-            super(ExchangeMachine, self).__init__(None, **self._markup)
+            super(MarkupMachine, self).__init__(None, **self._markup)
             for m in models_markup:
                 self._add_markup_model(m)
         else:
-            super(ExchangeMachine, self).__init__(*args, **kwargs)
+            super(MarkupMachine, self).__init__(*args, **kwargs)
 
-    def markup(self, model_model=None):
+    def markup(self):
         self._markup['states'] = [state for state in self.states]
         self._markup['transitions'] = self._convert_transitions()
         self._markup['initial'] = self.initial
@@ -40,33 +35,23 @@ class ExchangeMachine(Machine):
         self._markup['auto_transitions'] = self.auto_transitions
         self._markup['ignore_invalid_triggers'] = self.ignore_invalid_triggers
         self._markup['queued'] = self.has_queue
-
-        model_model = self.model_mode if model_model is None else model_model
-        self._markup['model'] = self._convert_models(model_model)
+        self._markup['model'] = self._convert_models()
         return self._markup
 
     def _add_markup_model(self, markup):
         initial = markup.get('state', None)
-        if 'model' in markup:
-            if markup['model'] == 'self':
-                self.add_model(self, initial)
-            else:
-                self.add_model(pickle.loads(markup['model']), initial)
+        if markup['class-name'] == 'self':
+            self.add_model(self, initial)
         else:
-            mod_name, cls_name = markup['class'][6:].rsplit('.', 1)
+            mod_name, cls_name = markup['class-name'][6:].rsplit('.', 1)
             cls = getattr(importlib.import_module(mod_name), cls_name)
             self.add_model(cls(), initial)
 
-    def _convert_models(self, mode):
+    def _convert_models(self):
         models = []
         for m in self.models:
             model_def = dict(state=m.state)
-            if m == self:
-                model_def['model'] = 'self'
-            elif mode == self._MODE_DEFS:
-                model_def['class'] = self.__module__ + "." + self.__class__.__name__
-            elif mode == self._MODE_PKL:
-                model_def['model'] = pickle.dumps(m)
+            model_def['class-name'] = 'self' if m == self else m.__module__ + "." + m.__class__.__name__
             models.append(model_def)
         return models
 
