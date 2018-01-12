@@ -3,8 +3,6 @@ from functools import partial
 import itertools
 import importlib
 
-import pickle
-
 from ..core import Machine
 
 
@@ -21,29 +19,39 @@ class MarkupMachine(Machine):
                 self._add_markup_model(m)
         else:
             super(MarkupMachine, self).__init__(*args, **kwargs)
+            self._markup['initial'] = self.initial
+            self._markup['before_state_change'] = [rep(f) for f in self.before_state_change]
+            self._markup['after_state_change'] = [rep(f) for f in self.before_state_change]
+            self._markup['prepare_event'] = [rep(f) for f in self.prepare_event]
+            self._markup['finalize_event'] = [rep(f) for f in self.finalize_event]
+            self._markup['name'] = self.name
+            self._markup['send_event'] = self.send_event
+            self._markup['auto_transitions'] = self.auto_transitions
+            self._markup['ignore_invalid_triggers'] = self.ignore_invalid_triggers
+            self._markup['queued'] = self.has_queue
 
+    @property
     def markup(self):
-        self._markup['states'] = [state for state in self.states]
-        self._markup['transitions'] = self._convert_transitions()
-        self._markup['initial'] = self.initial
-        self._markup['before_state_change'] = [rep(f) for f in self.before_state_change]
-        self._markup['after_state_change'] = [rep(f) for f in self.before_state_change]
-        self._markup['prepare_event'] = [rep(f) for f in self.prepare_event]
-        self._markup['finalize_event'] = [rep(f) for f in self.finalize_event]
-        self._markup['name'] = self.name
-        self._markup['send_event'] = self.send_event
-        self._markup['auto_transitions'] = self.auto_transitions
-        self._markup['ignore_invalid_triggers'] = self.ignore_invalid_triggers
-        self._markup['queued'] = self.has_queue
         self._markup['model'] = self._convert_models()
         return self._markup
+
+    def add_transition(self, trigger, source, dest, conditions=None,
+                       unless=None, before=None, after=None, prepare=None, **kwargs):
+        super(MarkupMachine, self).add_transition(trigger, source, dest, conditions=conditions, unless=unless,
+                                                  before=before, after=after, prepare=prepare, **kwargs)
+        self._markup['transitions'] = self._convert_transitions()
+
+    def add_states(self, states, on_enter=None, on_exit=None, ignore_invalid_triggers=None, **kwargs):
+        super(MarkupMachine, self).add_states(states, on_enter=on_enter, on_exit=on_exit,
+                                              ignore_invalid_triggers=ignore_invalid_triggers, **kwargs)
+        self._markup['states'] = [state for state in self.states]
 
     def _add_markup_model(self, markup):
         initial = markup.get('state', None)
         if markup['class-name'] == 'self':
             self.add_model(self, initial)
         else:
-            mod_name, cls_name = markup['class-name'][6:].rsplit('.', 1)
+            mod_name, cls_name = markup['class-name'].rsplit('.', 1)
             cls = getattr(importlib.import_module(mod_name), cls_name)
             self.add_model(cls(), initial)
 

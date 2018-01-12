@@ -15,6 +15,12 @@ except ImportError:
     from mock import MagicMock
 
 
+class SimpleModel(object):
+
+    def after_func(self):
+        pass
+
+
 class TestMarkupMachine(TestCase):
 
     def setUp(self):
@@ -29,11 +35,26 @@ class TestMarkupMachine(TestCase):
 
         m1 = Machine(states=['A', 'B', 'C'], transitions=self.transitions, initial='A')
         m1.walk()
-        m2 = Machine(markup=m1.markup())
+        m2 = Machine(markup=m1.markup)
         self.assertEqual(m1.state, m2.state)
-        self.assertEqual(len(m1.states), len(m2.states))
+        self.assertEqual(len(m1.models), len(m2.models))
+        self.assertEqual(m1.states.keys(), m2.states.keys())
+        self.assertEqual(m1.events.keys(), m2.events.keys())
+
+    def test_markup_self(self):
+
+        model1 = SimpleModel()
+        m1 = Machine(model1, states=['A', 'B', 'C'], transitions=self.transitions, initial='A')
+        model1.walk()
+        m2 = Machine(markup=m1.markup)
+        model2 = m2.models[0]
+        self.assertIsInstance(model2, SimpleModel)
+        self.assertEqual(len(m1.models), len(m2.models))
+        self.assertEqual(model1.state, model2.state)
+        self.assertEqual(m1.states.keys(), m2.states.keys())
+        self.assertEqual(m1.events.keys(), m2.events.keys())
+
+
 
     # TODO:
-    #   * test markup class loading model
-    #   * couple markup generation to add_state and add_transition
     #   * adapt diagrams to use markup
