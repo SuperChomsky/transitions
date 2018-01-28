@@ -8,11 +8,10 @@
 
 import logging
 from functools import partial
-import itertools
-from six import string_types, iteritems
 
 from ..core import Machine
 from ..core import Transition
+from .markup import MarkupMachine, rep
 from .nesting import HierarchicalMachine
 try:
     import pygraphviz as pgv
@@ -26,24 +25,6 @@ _LOGGER.addHandler(logging.NullHandler())
 # without it, Python 3.0 - 3.3 will not support pickling
 # https://github.com/pytransitions/transitions/issues/236
 _super = super
-
-
-def rep(func):
-    """ Return a string representation for `func`. """
-    if isinstance(func, string_types):
-        return func
-    try:
-        return func.__name__
-    except AttributeError:
-        pass
-    if isinstance(func, partial):
-        return "%s(%s)" % (
-            func.func.__name__,
-            ", ".join(itertools.chain(
-                (str(_) for _ in func.args),
-                ("%s=%s" % (key, value)
-                 for key, value in iteritems(func.keywords if func.keywords else {})))))
-    return str(func)
 
 
 class Graph(object):
@@ -149,13 +130,10 @@ class Graph(object):
         return False
 
     def _transition_label(self, edge_label, tran):
-        if self.machine.show_conditions and tran.conditions:
+        if self.machine.show_conditions and (tran['conditions'] or tran['unless']):
             return '{edge_label} [{conditions}]'.format(
                 edge_label=edge_label,
-                conditions=' & '.join(
-                    rep(c.func) if c.target else '!' + rep(c.func)
-                    for c in tran.conditions
-                ),
+                conditions=' & '.join(tran['conditions']) + ' & !'.join(tran['unless']),
             )
         return edge_label
 
@@ -175,8 +153,8 @@ class Graph(object):
         fsm_graph.edge_attr.update(self.style_attributes['edge']['default'])
 
         # For each state, draw a circle
-        self._add_nodes(self.machine.states, fsm_graph)
-        self._add_edges(self.machine.events.copy(), fsm_graph)
+        self._add_nodes(self.machine.markup['states'], fsm_graph)
+        self._add_edges(self.machine.markup['transitions'], fsm_graph)
 
         setattr(fsm_graph, 'style_attributes', self.style_attributes)
 
@@ -307,7 +285,7 @@ class TransitionGraphSupport(Transition):
         _super(TransitionGraphSupport, self)._change_state(event_data)  # pylint: disable=protected-access
 
 
-class GraphMachine(Machine):
+class GraphMachine(MarkupMachine):
     """ Extends transitions.core.Machine with graph support.
         Is also used as a mixin for HierarchicalMachine.
         Attributes:

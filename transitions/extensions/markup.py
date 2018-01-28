@@ -10,8 +10,9 @@ class MarkupMachine(Machine):
 
     def __init__(self, *args, **kwargs):
         self._markup = kwargs.pop('markup', {})
-        self.with_auto_transitions = True
+        self.with_auto_transitions = kwargs.pop('with_auto_transitions', False)
         self.with_reference_names = True
+
         if self._markup:
             models_markup = self._markup.pop('model', [])
             super(MarkupMachine, self).__init__(None, **self._markup)
@@ -44,7 +45,10 @@ class MarkupMachine(Machine):
     def add_states(self, states, on_enter=None, on_exit=None, ignore_invalid_triggers=None, **kwargs):
         super(MarkupMachine, self).add_states(states, on_enter=on_enter, on_exit=on_exit,
                                               ignore_invalid_triggers=ignore_invalid_triggers, **kwargs)
-        self._markup['states'] = [state for state in self.states]
+        self._markup['states'] = self._convert_states(self.states.values())
+
+    def _convert_states(self, states):
+        return [state if not hasattr(state, 'children') else self._convert_states(state) for state in states]
 
     def _add_markup_model(self, markup):
         initial = markup.get('state', None)

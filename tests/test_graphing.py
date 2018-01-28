@@ -7,7 +7,6 @@ from .utils import Stuff
 from .test_core import TestTransitions
 
 from transitions.extensions import MachineFactory
-from transitions.extensions.diagrams import rep
 from transitions.extensions.nesting import NestedState
 from unittest import skipIf
 from functools import partial
