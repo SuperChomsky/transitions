@@ -11,7 +11,7 @@ class MarkupMachine(Machine):
     def __init__(self, *args, **kwargs):
         self._markup = kwargs.pop('markup', {})
         self.with_auto_transitions = kwargs.pop('with_auto_transitions', False)
-        self.with_reference_names = True
+        self.skip_references = True
 
         if self._markup:
             models_markup = self._markup.pop('model', [])
@@ -21,10 +21,10 @@ class MarkupMachine(Machine):
         else:
             super(MarkupMachine, self).__init__(*args, **kwargs)
             self._markup['initial'] = self.initial
-            self._markup['before_state_change'] = [rep(f) for f in self.before_state_change]
-            self._markup['after_state_change'] = [rep(f) for f in self.before_state_change]
-            self._markup['prepare_event'] = [rep(f) for f in self.prepare_event]
-            self._markup['finalize_event'] = [rep(f) for f in self.finalize_event]
+            self._markup['before_state_change'] = [x for x in (self._rep(f) for f in self.before_state_change) if x]
+            self._markup['after_state_change'] = [x for x in (self._rep(f) for f in self.before_state_change) if x]
+            self._markup['prepare_event'] = [x for x in (self._rep(f) for f in self.prepare_event) if x]
+            self._markup['finalize_event'] = [x for x in (self._rep(f) for f in self.finalize_event) if x]
             self._markup['name'] = self.name
             self._markup['send_event'] = self.send_event
             self._markup['auto_transitions'] = self.auto_transitions
@@ -69,6 +69,7 @@ class MarkupMachine(Machine):
 
     def _convert_transitions(self):
         json_transitions = []
+        skip = self.skip_references
         for event in self.events.values():
             if self._omit_auto_transitions(event):
                 continue
@@ -77,11 +78,11 @@ class MarkupMachine(Machine):
                 src = transitions[0]
                 for trans in transitions[1]:
                     new_json = {"trigger": event.name, "source": src, "dest": trans.dest,
-                                "prepare": [rep(f) for f in trans.prepare],
-                                "conditions": [rep(f.func) for f in trans.conditions if f.target],
-                                "unless": [rep(f.func) for f in trans.conditions if not f.target],
-                                "before": [rep(f) for f in trans.before],
-                                "after": [rep(f) for f in trans.after]}
+                                "prepare": [x for x in (rep(f, skip) for f in trans.prepare) if x],
+                                "conditions": [x for x in (rep(f.func, skip) for f in trans.conditions if f.target) if x],
+                                "unless": [x for x in (rep(f.func, skip) for f in trans.conditions if not f.target) if x],
+                                "before": [x for x in (rep(f, skip) for f in trans.before) if x],
+                                "after": [x for x in (self._rep(f, skip) for f in trans.after) if x]}
                     json_transitions.append({k: v for k, v in new_json.items() if v})
         return json_transitions
 
@@ -98,10 +99,12 @@ class MarkupMachine(Machine):
         return False
 
 
-def rep(func):
+def rep(self, func, skip_references=False):
     """ Return a string representation for `func`. """
     if isinstance(func, string_types):
         return func
+    if self.skip_references:
+        return None
     try:
         return func.__name__
     except AttributeError:
