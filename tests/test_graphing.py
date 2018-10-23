@@ -24,61 +24,6 @@ def edge_label_from_transition_label(label):
     return label.split(' | ')[0].split(' [')[0]  # if no condition, label is returned; returns first event only
 
 
-class TestRep(TestTransitions):
-
-    def test_rep_string(self):
-        self.assertEqual(rep("string"), "string")
-
-    def test_rep_function(self):
-        def check():
-            return True
-        self.assertTrue(check())
-        self.assertEqual(rep(check), "check")
-
-    def test_rep_partial_no_args_no_kwargs(self):
-        def check():
-            return True
-        pcheck = partial(check)
-        self.assertTrue(pcheck())
-        self.assertEqual(rep(pcheck), "check()")
-
-    def test_rep_partial_with_args(self):
-        def check(result):
-            return result
-        pcheck = partial(check, True)
-        self.assertTrue(pcheck())
-        self.assertEqual(rep(pcheck), "check(True)")
-
-    def test_rep_partial_with_kwargs(self):
-        def check(result=True):
-            return result
-        pcheck = partial(check, result=True)
-        self.assertTrue(pcheck())
-        self.assertEqual(rep(pcheck), "check(result=True)")
-
-    def test_rep_partial_with_args_and_kwargs(self):
-        def check(result, doublecheck=True):
-            return result == doublecheck
-        pcheck = partial(check, True, doublecheck=True)
-        self.assertTrue(pcheck())
-        self.assertEqual(rep(pcheck), "check(True, doublecheck=True)")
-
-    def test_rep_callable_class(self):
-        class Check(object):
-            def __init__(self, result):
-                self.result = result
-
-            def __call__(self):
-                return self.result
-
-            def __repr__(self):
-                return "%s(%r)" % (type(self).__name__, self.result)
-
-        ccheck = Check(True)
-        self.assertTrue(ccheck())
-        self.assertEqual(rep(ccheck), "Check(True)")
-
-
 @skipIf(pgv is None, 'Graph diagram requires pygraphviz')
 class TestDiagrams(TestTransitions):
 
@@ -98,7 +43,7 @@ class TestDiagrams(TestTransitions):
         m = self.machine_cls(states=self.states, transitions=self.transitions, initial='A', auto_transitions=False, title='a test')
         graph = m.get_graph()
         self.assertIsNotNone(graph)
-        self.assertTrue("digraph" in str(graph))
+        self.assertTrue(graph.directed)
 
         # Test that graph properties match the Machine
         self.assertEqual(
@@ -257,7 +202,6 @@ class TestDiagramsNested(TestDiagrams):
         sgraph = graph.get_subgraph('cluster_C').get_subgraph('cluster_C_child')
         sgraph = sgraph.get_subgraph('cluster_C%s1' % NestedState.separator)
         self.assertIsNotNone(sgraph)
-        # print(graph.string())
         graph.draw(target.name, prog='dot')
         self.assertTrue(os.path.getsize(target.name) > 0)
 

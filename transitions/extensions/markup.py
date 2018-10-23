@@ -4,6 +4,7 @@ import itertools
 import importlib
 
 from ..core import Machine
+from .nesting import HierarchicalMachine
 
 
 class MarkupMachine(Machine):
@@ -21,10 +22,10 @@ class MarkupMachine(Machine):
         else:
             super(MarkupMachine, self).__init__(*args, **kwargs)
             self._markup['initial'] = self.initial
-            self._markup['before_state_change'] = [x for x in (self._rep(f) for f in self.before_state_change) if x]
-            self._markup['after_state_change'] = [x for x in (self._rep(f) for f in self.before_state_change) if x]
-            self._markup['prepare_event'] = [x for x in (self._rep(f) for f in self.prepare_event) if x]
-            self._markup['finalize_event'] = [x for x in (self._rep(f) for f in self.finalize_event) if x]
+            self._markup['before_state_change'] = [x for x in (rep(f) for f in self.before_state_change) if x]
+            self._markup['after_state_change'] = [x for x in (rep(f) for f in self.before_state_change) if x]
+            self._markup['prepare_event'] = [x for x in (rep(f) for f in self.prepare_event) if x]
+            self._markup['finalize_event'] = [x for x in (rep(f) for f in self.finalize_event) if x]
             self._markup['name'] = self.name
             self._markup['send_event'] = self.send_event
             self._markup['auto_transitions'] = self.auto_transitions
@@ -48,7 +49,7 @@ class MarkupMachine(Machine):
         self._markup['states'] = self._convert_states(self.states.values())
 
     def _convert_states(self, states):
-        return [state if not hasattr(state, 'children') else self._convert_states(state) for state in states]
+        return [{'name': state.name} for state in states]
 
     def _add_markup_model(self, markup):
         initial = markup.get('state', None)
@@ -82,7 +83,7 @@ class MarkupMachine(Machine):
                                 "conditions": [x for x in (rep(f.func, skip) for f in trans.conditions if f.target) if x],
                                 "unless": [x for x in (rep(f.func, skip) for f in trans.conditions if not f.target) if x],
                                 "before": [x for x in (rep(f, skip) for f in trans.before) if x],
-                                "after": [x for x in (self._rep(f, skip) for f in trans.after) if x]}
+                                "after": [x for x in (rep(f, skip) for f in trans.after) if x]}
                     json_transitions.append({k: v for k, v in new_json.items() if v})
         return json_transitions
 
@@ -99,11 +100,20 @@ class MarkupMachine(Machine):
         return False
 
 
-def rep(self, func, skip_references=False):
+class HierarchicalMarkupMachine(MarkupMachine, HierarchicalMachine):
+
+    def _convert_states(self, states):
+        return self._convert_nested_states([state for state in states if not state.parent])
+
+    def _convert_nested_states(self, states):
+        return [{'name': state._name} if not state.children else \
+                    {'name': state._name, 'children': self._convert_nested_states(state.children)} for state in states]
+
+def rep(func, skip_references=False):
     """ Return a string representation for `func`. """
     if isinstance(func, string_types):
         return func
-    if self.skip_references:
+    if skip_references:
         return None
     try:
         return func.__name__

@@ -3,10 +3,8 @@ try:
 except ImportError:
     pass
 
-from transitions.extensions.markup import MarkupMachine
-from transitions.extensions.nesting import HierarchicalMachine
+from transitions.extensions.markup import MarkupMachine, HierarchicalMarkupMachine
 from transitions.extensions.markup import rep
-from utils import Stuff
 from functools import partial
 
 
@@ -84,7 +82,6 @@ class TestMarkupMachine(TestCase):
     def setUp(self):
         self.machine_cls = MarkupMachine
         self.states = ['A', 'B', 'C', 'D']
-        # self.stuff = Stuff(machine_cls=self.machine_cls)
         self.transitions = [
             {'trigger': 'walk', 'source': 'A', 'dest': 'B'},
             {'trigger': 'run', 'source': 'B', 'dest': 'C'},
@@ -126,13 +123,8 @@ class TestMarkupHierarchicalMachine(TestMarkupMachine):
 
         self.transitions = [
             {'trigger': 'walk', 'source': 'A', 'dest': 'C_1'},
-            {'trigger': 'run', 'source': 'C_1', 'dest': 'C_1_a'},
+            {'trigger': 'run', 'source': 'C_1', 'dest': 'C_3_a'},
             {'trigger': 'sprint', 'source': 'C', 'dest': 'B'}
         ]
 
-        class MarkupHierarchicalMachine(MarkupMachine, HierarchicalMachine):
-            pass
-
-        self.machine_cls = MarkupHierarchicalMachine
-        # self.stuff = Stuff(states=states, machine_cls=self.machine_cls,
-        #                    transitions=self.transitions)
+        self.machine_cls = HierarchicalMarkupMachine

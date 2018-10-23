@@ -12,6 +12,7 @@ from ..core import Machine
 from .nesting import HierarchicalMachine, NestedTransition, NestedEvent
 from .locking import LockedMachine, LockedEvent
 from .diagrams import GraphMachine, TransitionGraphSupport, NestedGraph
+from .markup import MarkupMachine, HierarchicalMarkupMachine
 
 
 class MachineFactory(object):
@@ -49,7 +50,7 @@ class LockedNestedEvent(LockedEvent, NestedEvent):
     pass
 
 
-class HierarchicalGraphMachine(GraphMachine, HierarchicalMachine):
+class HierarchicalGraphMachine(GraphMachine, HierarchicalMarkupMachine):
     """
         A hierarchical state machine with graph support.
     """
@@ -73,7 +74,7 @@ class LockedGraphMachine(GraphMachine, LockedMachine):
     pass
 
 
-class LockedHierarchicalGraphMachine(GraphMachine, LockedMachine, HierarchicalMachine):
+class LockedHierarchicalGraphMachine(GraphMachine, LockedMachine, HierarchicalMarkupMachine):
     """
         A threadsafe hiearchical machine with graph support.
     """

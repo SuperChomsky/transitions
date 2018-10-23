@@ -9,10 +9,9 @@
 import logging
 from functools import partial
 
-from ..core import Machine
 from ..core import Transition
 from .markup import MarkupMachine, rep
-from .nesting import HierarchicalMachine
+from .nesting import NestedState
 try:
     import pygraphviz as pgv
 except ImportError:  # pragma: no cover
@@ -93,47 +92,30 @@ class Graph(object):
     def _add_nodes(self, states, container):
         for state in states:
             shape = self.style_attributes['node']['default']['shape']
-            container.add_node(state, shape=shape)
+            container.add_node(state['name'], shape=shape)
 
-    def _add_edges(self, events, container):
-        for event in events.values():
-            label = str(event.name)
-            if self._omit_auto_transitions(event, label):
-                continue
-
-            for transitions in event.transitions.items():
-                src = transitions[0]
-                edge_attr = {}
-                for trans in transitions[1]:
-                    if trans.dest is None:
-                        dst = src
-                        label += " [internal]"
-                    else:
-                        dst = trans.dest
-                    edge_attr['label'] = self._transition_label(label, trans)
-                    if container.has_edge(src, dst):
-                        edge = container.get_edge(src, dst)
-                        edge.attr['label'] = edge.attr['label'] + ' | ' + edge_attr['label']
-                    else:
-                        container.add_edge(src, dst, **edge_attr)
-
-    def _omit_auto_transitions(self, event, label):
-        return self._is_auto_transition(event, label) and not self.machine.show_auto_transitions
-
-    # auto transition events commonly a) start with the 'to_' prefix, followed by b) the state name
-    # and c) contain a transition from each state to the target state (including the target)
-    def _is_auto_transition(self, event, label):
-        if label.startswith('to_') and len(event.transitions) == len(self.machine.states):
-            state_name = label[len('to_'):]
-            if state_name in self.machine.states:
-                return True
-        return False
+    def _add_edges(self, transitions, container):
+        for transition in transitions:
+            label = transition['trigger']
+            src = transition['source']
+            edge_attr = {}
+            if 'dest' not in transition:
+                dst = src
+                label += " [internal]"
+            else:
+                dst = transition['dest']
+            edge_attr['label'] = self._transition_label(label, transition)
+            if container.has_edge(src, dst):
+                edge = container.get_edge(src, dst)
+                edge.attr['label'] = edge.attr['label'] + ' | ' + edge_attr['label']
+            else:
+                container.add_edge(src, dst, **edge_attr)
 
     def _transition_label(self, edge_label, tran):
-        if self.machine.show_conditions and (tran['conditions'] or tran['unless']):
+        if self.machine.show_conditions and any(prop in tran for prop in ['conditions', 'unless']):
             return '{edge_label} [{conditions}]'.format(
                 edge_label=edge_label,
-                conditions=' & '.join(tran['conditions']) + ' & !'.join(tran['unless']),
+                conditions=' & '.join(tran.get('conditions', [])) + ' & !'.join(tran.get('unless', [])),
             )
         return edge_label
 
@@ -153,8 +135,8 @@ class Graph(object):
         fsm_graph.edge_attr.update(self.style_attributes['edge']['default'])
 
         # For each state, draw a circle
-        self._add_nodes(self.machine.markup['states'], fsm_graph)
-        self._add_edges(self.machine.markup['transitions'], fsm_graph)
+        self._add_nodes(self.machine.markup.get('states', []), fsm_graph)
+        self._add_edges(self.machine.markup.get('transitions', []), fsm_graph)
 
         setattr(fsm_graph, 'style_attributes', self.style_attributes)
 
@@ -172,84 +154,63 @@ class NestedGraph(Graph):
         {'clusterrank': 'local', 'rankdir': 'TB', 'ratio': 0.8})
 
     def __init__(self, *args, **kwargs):
-        self.seen_nodes = []
         self.seen_transitions = []
         _super(NestedGraph, self).__init__(*args, **kwargs)
         self.style_attributes['edge']['default']['minlen'] = 2
 
-    def _add_nodes(self, states, container):
-        states = [self.machine.get_state(state) for state in states] if isinstance(states, dict) else states
+    def _add_nodes(self, states, container, prefix=''):
         for state in states:
-            if state.name in self.seen_nodes:
-                continue
-            self.seen_nodes.append(state.name)
-            if state.children:
-                cluster_name = "cluster_" + state.name
-                sub = container.add_subgraph(name=cluster_name, label=state.name, rank='source',
+            name = prefix + state['name']
+            if  'children' in state:
+                cluster_name = "cluster_" + name
+                sub = container.add_subgraph(name=cluster_name, label=state['name'], rank='source',
                                              **self.style_attributes['graph']['default'])
-                anchor_name = state.name + "_anchor"
-                root_container = sub.add_subgraph(name=state.name + '_root')
+                root_container = sub.add_subgraph(name=cluster_name + '_root')
                 child_container = sub.add_subgraph(name=cluster_name + '_child', label='', color=None)
-                root_container.add_node(anchor_name, shape='point', fillcolor='black', width='0.1')
-                self._add_nodes(state.children, child_container)
+                root_container.add_node(name + "_anchor", shape='point', fillcolor='black', width='0.1')
+                self._add_nodes(state['children'], child_container, prefix=prefix + state['name'] + NestedState.separator)
             else:
-                container.add_node(state.name, shape=self.style_attributes['node']['default']['shape'])
+                container.add_node(name, shape=self.style_attributes['node']['default']['shape'])
 
-    def _add_edges(self, events, container):
+    def _add_edges(self, transitions, container):
 
-        for sub in container.subgraphs_iter():
-            events = self._add_edges(events, sub)
+        # for sub in container.subgraphs_iter():
+        #     events = self._add_edges(transitions, sub)
 
-        for event in events.values():
-            label = str(event.name)
-            if self._omit_auto_transitions(event, label):
-                continue
+        for transition in transitions:
+            label = transition['trigger']
+            src = transition['source']
+            try:
+                dst = transition['dest']
+            except KeyError:
+                dst = src
+                label +=" [internal]"
+            edge_attr = {}
+            if _get_subgraph(container, 'cluster_' + src) is not None:
+                edge_attr['ltail'] = 'cluster_' + src
+                src_name = src + "_anchor"
+            else:
+                src_name = src
 
-            for transitions in event.transitions.items():
-                src = transitions[0]
-                if not container.has_node(src) and _get_subgraph(container, "cluster_" + src) is None:
-                    continue
+            dst_graph = _get_subgraph(container, 'cluster_' + dst)
+            if dst_graph is not None:
+                if not src.startswith(dst):
+                    edge_attr['lhead'] = "cluster_" + dst
+                dst_name = dst + '_anchor'
+            else:
+                dst_name = dst
 
-                src = self.machine.get_state(src)
-                edge_attr = {}
-                label_pos = 'label'
-                if src.children:
-                    edge_attr['ltail'] = "cluster_" + src.name
-                    src_name = src.name + "_anchor"
-                else:
-                    src_name = src.name
+            # remove ltail when dst is a child of src
+            if 'ltail' in edge_attr:
+                if _get_subgraph(container, edge_attr['ltail']).has_node(dst_name):
+                    del edge_attr['ltail']
 
-                for trans in transitions[1]:
-                    if trans in self.seen_transitions:
-                        continue
-                    if trans.dest is None:
-                        dst = src
-                        label += " [internal]"
-                    elif not container.has_node(trans.dest) and _get_subgraph(container, 'cluster_' + trans.dest) is None:
-                        continue
-                    else:
-                        dst = self.machine.get_state(trans.dest)
-
-                    self.seen_transitions.append(trans)
-                    if dst.children:
-                        if not src.is_substate_of(dst.name):
-                            edge_attr['lhead'] = "cluster_" + dst.name
-                        dst_name = dst.name + '_anchor'
-                    else:
-                        dst_name = dst.name
-
-                    if 'ltail' in edge_attr:
-                        if _get_subgraph(container, edge_attr['ltail']).has_node(dst_name):
-                            del edge_attr['ltail']
-
-                    edge_attr[label_pos] = self._transition_label(label, trans)
-                    if container.has_edge(src_name, dst_name):
-                        edge = container.get_edge(src_name, dst_name)
-                        edge.attr[label_pos] += ' | ' + edge_attr[label_pos]
-                    else:
-                        container.add_edge(src_name, dst_name, **edge_attr)
-
-        return events
+            edge_attr['label'] = self._transition_label(label, transition)
+            if container.has_edge(src_name, dst_name):
+                edge = container.get_edge(src_name, dst_name)
+                edge.attr['label'] += ' | ' + edge_attr['label']
+            else:
+                container.add_edge(src_name, dst_name, **edge_attr)
 
 
 class TransitionGraphSupport(Transition):
@@ -315,7 +276,9 @@ class GraphMachine(MarkupMachine):
         # remove graph config from keywords
         self.title = kwargs.pop('title', 'State Machine')
         self.show_conditions = kwargs.pop('show_conditions', False)
-        self.show_auto_transitions = kwargs.pop('show_auto_transitions', False)
+        # in MarkupMachine this switch is called 'with_auto_transitions'
+        # keep 'show_auto_transitions' for backwards compatibility
+        kwargs['with_auto_transitions'] = kwargs.pop('show_auto_transitions', False)
         self.model_graphs = {}
 
         # Update March 2017: This temporal overwrite does not work
@@ -381,7 +344,7 @@ class GraphMachine(MarkupMachine):
         """
         # If show_auto_transitions is True, there will be an edge from 'edge_from' to 'edge_to'.
         # This test is considered faster than always calling 'has_edge'.
-        if not self.show_auto_transitions and not graph.has_edge(edge_from, edge_to):
+        if not self.with_auto_transitions and not graph.has_edge(edge_from, edge_to):
             graph.add_edge(edge_from, edge_to, label)
         edge = graph.get_edge(edge_from, edge_to)
         self.set_edge_style(graph, edge, state)
