@@ -161,7 +161,7 @@ class NestedGraph(Graph):
     def _add_nodes(self, states, container, prefix=''):
         for state in states:
             name = prefix + state['name']
-            if  'children' in state:
+            if 'children' in state:
                 cluster_name = "cluster_" + name
                 sub = container.add_subgraph(name=cluster_name, label=state['name'], rank='source',
                                              **self.style_attributes['graph']['default'])
@@ -184,7 +184,7 @@ class NestedGraph(Graph):
                 dst = transition['dest']
             except KeyError:
                 dst = src
-                label +=" [internal]"
+                label += " [internal]"
             edge_attr = {}
             if _get_subgraph(container, 'cluster_' + src) is not None:
                 edge_attr['ltail'] = 'cluster_' + src

@@ -106,8 +106,9 @@ class HierarchicalMarkupMachine(MarkupMachine, HierarchicalMachine):
         return self._convert_nested_states([state for state in states if not state.parent])
 
     def _convert_nested_states(self, states):
-        return [{'name': state._name} if not state.children else \
-                    {'name': state._name, 'children': self._convert_nested_states(state.children)} for state in states]
+        return [{'name': state._name} if not state.children else
+                {'name': state._name, 'children': self._convert_nested_states(state.children)} for state in states]
+
 
 def rep(func, skip_references=False):
     """ Return a string representation for `func`. """
